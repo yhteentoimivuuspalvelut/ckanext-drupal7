@@ -101,6 +101,7 @@ class Drupal7Plugin(p.SingletonPlugin):
         # Can we find the user?
         cookies = p.toolkit.request.cookies
 
+        user = None
         drupal_sid = cookies.get(self.drupal_session_name)
         if drupal_sid:
             engine = sa.create_engine(self.connection)
@@ -114,8 +115,9 @@ class Drupal7Plugin(p.SingletonPlugin):
                 [self.sysadmin_role, str(drupal_sid)])
 
             for row in rows:
-                self.user(row)
+                user = self.user(row)
                 break
+        p.toolkit.c.user = user
 
     def user(self, user_data):
         try:
@@ -135,9 +137,9 @@ class Drupal7Plugin(p.SingletonPlugin):
             user = {'email': user_data.mail,
                     'name': user_data.name,
                     'password': self.make_password(),
-                    'sysadmin': bool(user_data.uid),}
+                    'sysadmin': bool(user_data.uid), }
             user = p.toolkit.get_action('user_create')({'ignore_auth': True}, user)
-            p.toolkit.c.user = user['name']
+        return user['name']
 
     def abort(self, status_code, detail, headers, comment):
         # HTTP Status 401 causes a login redirect.  We need to prevent this
