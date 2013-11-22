@@ -135,7 +135,7 @@ class Drupal7Plugin(p.SingletonPlugin):
                 user = p.toolkit.get_action('user_update')({'ignore_auth': True}, user)
         else:
             user = {'email': user_data.mail,
-                    'name': user_data.name,
+                    'name': user_data.name.lower(),
                     'password': self.make_password(),
                     'sysadmin': bool(user_data.uid), }
             user = p.toolkit.get_action('user_create')({'ignore_auth': True}, user)
