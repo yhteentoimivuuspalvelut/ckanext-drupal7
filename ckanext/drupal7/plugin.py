@@ -50,7 +50,7 @@ class Drupal7Plugin(p.SingletonPlugin):
     p.implements(p.IConfigurable)
     p.implements(p.ITemplateHelpers)
 
-    drupal_session_name = None
+    drupal_session_names = None
 
     def get_helpers(self):
         return {'ckanext_drupal7_domain': self.get_domain}
@@ -62,12 +62,14 @@ class Drupal7Plugin(p.SingletonPlugin):
         p.toolkit.add_template_directory(config, 'templates')
 
     def configure(self, config):
-        self.domain = config.get('ckanext.drupal7.domain')
+        domain = config.get('ckanext.drupal7.domain')
         self.sysadmin_role = config.get('ckanext.drupal7.sysadmin_role')
         self.connection = config.get('ckanext.drupal7.connection')
 
-        if not (self.domain and self.sysadmin_role and self.connection):
+        if not (domain and self.sysadmin_role and self.connection):
             raise Exception('Drupal7 extension has not been configured')
+
+        self.domains = [item.strip() for item in domain.split(",")]
 
     def before_map(self, map):
         map.connect(
@@ -85,10 +87,11 @@ class Drupal7Plugin(p.SingletonPlugin):
             out += str(uuid.uuid4())
         return out
 
-    def create_drupal_session_name(self):
-        server_name = self.domain or p.toolkit.request.environ['SERVER_NAME']
-        session_name = 'SESS%s' % hashlib.sha256(server_name).hexdigest()[:32]
-        self.drupal_session_name = session_name
+    def create_drupal_session_names(self):
+        self.drupal_session_names = []
+        for domain in self.domains:
+            session_name = 'SESS%s' % hashlib.sha256(domain).hexdigest()[:32]
+            self.drupal_session_names.append(session_name)
 
     def identify(self):
         ''' This does work around saml2 authorization.
@@ -96,27 +99,31 @@ class Drupal7Plugin(p.SingletonPlugin):
         convert this to represent the ckan user. '''
 
         # If no drupal sesssion name create one
-        if self.drupal_session_name is None:
-            self.create_drupal_session_name()
+        if self.drupal_session_names is None:
+            self.create_drupal_session_names()
         # Can we find the user?
         cookies = p.toolkit.request.cookies
 
         user = None
-        drupal_sid = cookies.get(self.drupal_session_name)
-        if drupal_sid:
-            engine = sa.create_engine(self.connection)
-            rows = engine.execute(
-                'SELECT u.name, u.mail, t.uid FROM users u '
-                'JOIN sessions s on s.uid=u.uid LEFT OUTER JOIN '
-                '(SELECT ur.uid FROM role r JOIN users_roles ur '
-                '     ON r.rid = ur.rid WHERE r.name=%s '
-                ') AS t ON t.uid = u.uid '
-                'WHERE s.sid=%s',
-                [self.sysadmin_role, str(drupal_sid)])
+        for drupal_session_name in self.drupal_session_names:
+            drupal_sid = cookies.get(drupal_session_name)
+            if drupal_sid:
+                engine = sa.create_engine(self.connection)
+                rows = engine.execute(
+                    'SELECT u.name, u.mail, t.uid FROM users u '
+                    'JOIN sessions s on s.uid=u.uid LEFT OUTER JOIN '
+                    '(SELECT ur.uid FROM role r JOIN users_roles ur '
+                    '     ON r.rid = ur.rid WHERE r.name=%s '
+                    ') AS t ON t.uid = u.uid '
+                    'WHERE s.sid=%s',
+                    [self.sysadmin_role, str(drupal_sid)])
 
-            for row in rows:
-                user = self.user(row)
+                for row in rows:
+                    user = self.user(row)
+                    break
+            if user:
                 break
+
         p.toolkit.c.user = user
 
     def user(self, user_data):
