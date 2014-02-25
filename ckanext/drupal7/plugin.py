@@ -126,15 +126,23 @@ class Drupal7Plugin(p.SingletonPlugin):
 
         p.toolkit.c.user = user
 
+    def _email_hash(self, email):
+        return hashlib.md5(email.strip().lower().encode('utf8')).hexdigest()
+
     def user(self, user_data):
         try:
             user = p.toolkit.get_action('user_show')({'return_minimal': True, 'keep_sensitive_data': True}, {'id': user_data.name})
         except p.toolkit.ObjectNotFound:
-            pass
             user = None
+
         if user:
             # update the user in ckan if not matching drupal data
-            if (user_data.mail != user['email']
+            email_hash = user.get("email_hash", None)
+
+            if not email_hash:
+                email_hash = self._email_hash(user.get("email"))
+
+            if (self._email_hash(user_data.mail) != email_hash
                     or bool(user_data.uid) != user['sysadmin']):
                 user['email'] = user_data.mail
                 user['sysadmin'] = bool(user_data.uid)
