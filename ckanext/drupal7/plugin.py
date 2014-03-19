@@ -65,6 +65,7 @@ class Drupal7Plugin(p.SingletonPlugin):
         domain = config.get('ckanext.drupal7.domain')
         self.sysadmin_role = config.get('ckanext.drupal7.sysadmin_role')
         self.connection = config.get('ckanext.drupal7.connection')
+        self.allow_edit = config.get('ckanext.drupal7.allow_edit', 'false') == 'true'
 
         if not (domain and self.sysadmin_role and self.connection):
             raise Exception('Drupal7 extension has not been configured')
@@ -166,12 +167,14 @@ class Drupal7Plugin(p.SingletonPlugin):
 
     def get_auth_functions(self):
         # we need to prevent some actions being authorized.
-        return {
+        auth_functions = {
             'user_create': user_create,
-            'user_update': user_update,
             'user_reset': user_reset,
             'request_reset': request_reset,
         }
+        if not self.allow_edit:
+            auth_functions['user_update'] = user_update
+        return auth_functions
 
 
 class Drupal7Controller(base.BaseController):
